@@ -753,7 +753,7 @@ stream_t *sdr_str_open(const char *path)
     if (p == path) { // TCP server (path = :port)
         stat = stropen(str, STR_TCPSVR, STR_MODE_W, path);
     }
-    // TEB: fixed segmentation fault (2025/12/03)
+    // TEB: Fix segmentation fault (2025/12/03)
     else if (p && sscanf(p, ":%d", &port) == 1) { // TCP client (path = addr:port)
         stat = stropen(str, STR_TCPCLI, STR_MODE_W, path);
     }

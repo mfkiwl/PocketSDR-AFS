@@ -269,6 +269,22 @@ sdr_dev_t *sdr_dev_open(int bus, int port)
 //
 void sdr_dev_close(sdr_dev_t *dev)
 {
+    // TEB: Close NT1066 -----
+    uint8_t data[6];
+
+    // read device info and status
+    if (!sdr_usb_req(dev->usb, 0, SDR_VR_STAT, 0, data, 6)) {
+        data[0] = 0; // Unknow device version
+    }
+
+    int ver = data[0] >> 4;
+
+    if (ver == 0xA) {
+        fprintf(stderr, "Closing NT1066 Frontend...\n");
+        sdr_config_nt1066_close(dev);
+    }
+    // -----------------------
+
     sdr_usb_close(dev->usb);
 #ifndef WIN32
     for (int i = 0; i < SDR_MAX_BUFF; i++) {
@@ -394,8 +410,25 @@ int sdr_dev_get_info(sdr_dev_t *dev, int *fmt, double *fs, double *fo, int *IQ)
         return 0;
     }
     int type = (data[3] >> 4) & 1; // 0: Pocket SDR, 1: Spider SDR
+    int ver = data[0] >> 4;
     double fx = (((uint16_t)data[1] << 8) + data[2]) * 1e3; // TCXO freq (Hz)
     
+    // TEB: Added NT1066 config
+    if (ver == 0xA) {
+        fprintf(stderr, "Configuring NT1066 Frontend...\n");
+        
+        if (!sdr_config_nt1066(dev)) {
+            return 0; // Failed
+        }
+
+        *fmt = SDR_FMT_RAW8;
+        *fs = 10.0e6;
+        *fo = 2492.028e6;
+        *IQ = 2;
+        
+        return 1; // nch = 1
+    }
+
     if (type == 1) { // Spider SDR
         *fmt = SDR_FMT_RAW16I;
         nch = data[3] & 0xF;
@@ -405,7 +438,7 @@ int sdr_dev_get_info(sdr_dev_t *dev, int *fmt, double *fs, double *fo, int *IQ)
         }
     }
     else { // Pocket SDR FE
-        int ver = data[0] >> 4;
+        //int ver = data[0] >> 4;
         *fmt = (ver <= 2) ? SDR_FMT_RAW8 : SDR_FMT_RAW16; // 2CH : 4CH
         nch = (ver <= 2) ? 2 : 4;
         for (int i = 0; i < nch; i++) {

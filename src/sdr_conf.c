@@ -608,3 +608,98 @@ int sdr_conf_write(sdr_dev_t *dev, const char *file, int opt)
     }
     return 1;
 }
+
+// TEB: Configure NT1066 EVK
+
+int sdr_config_nt1066(sdr_dev_t *dev)
+{
+    // SYSTEM INFO
+    uint32_t chip_ser, chip_ver;
+
+    chip_ser = read_reg(dev->usb, 0, 0) << 5;
+    chip_ver = read_reg(dev->usb, 0, 1);
+
+    chip_ser |= ((chip_ver >> 3) & 0x1f);
+    chip_ver &= 0x7;
+    
+    fprintf(stderr, "SYSTEM INFO: %d,%d\n", chip_ser, chip_ver); // 1066,2
+
+    // TEMPERATURE
+    uint32_t temp;
+    double dtemp;
+
+    write_reg(dev->usb, 0, 9, 1); // start single measurement
+
+    while (1) {
+        if (read_reg(dev->usb, 0, 9) == 0) // finished
+            break;
+    }
+
+    temp = (read_reg(dev->usb, 0, 4) & 0x2) << 8;
+    temp |= read_reg(dev->usb, 0, 5);
+
+    dtemp = 506.0 - 0.75*temp;
+    fprintf(stderr, "TEMP: %.1f degC\n", dtemp);
+
+    // Enable Ch.D and CLK
+    write_reg(dev->usb, 0, 6, 0x18);
+
+    // TCXO pass-through
+    write_reg(dev->usb, 0, 10, 0x03);
+
+    // Set LO frequency
+    write_reg(dev->usb, 0, 89, 0x7C); // 2492028 kHz
+
+    // PLL tuning execute
+    write_reg(dev->usb, 0, 90, 0x01);
+    while (1) {
+        if (read_reg(dev->usb, 0, 90) == 0x00)
+            break;
+    }
+
+    // Check PLL status
+    uint32_t stat = read_reg(dev->usb, 0, 80) & 0x07;
+    fprintf(stderr, "PLL STATUS: %d\n", stat);
+    if (stat != 0x01) {
+        fprintf(stderr, "ERROR: PLL is not locked.\n");
+        write_reg(dev->usb, 0, 6, 0x00); // Shutting down
+        return(0);
+    }
+
+    // LPF cut-off
+    write_reg(dev->usb, 0, 92, 0x0A);
+
+    // Check AOK status
+    uint32_t aok = read_reg(dev->usb, 0, 2);
+    fprintf(stderr, "AOK STATUS: %02X\n", aok);
+    if (aok != 0x1f) {
+        fprintf(stderr, "ERROR: Invalid AOK status.\n");
+        write_reg(dev->usb, 0, 6, 0x00); // Shutting down
+        return(0);
+    }
+
+    // Read LO frequency
+    uint32_t freq;
+
+    freq = read_reg(dev->usb, 0, 87);
+    freq <<= 8;
+    freq |= read_reg(dev->usb, 0, 88);
+    freq <<= 8;
+    freq |= read_reg(dev->usb, 0, 89);
+
+    fprintf(stderr, "LO FREQ: %d kHz\n", freq);
+    
+    fprintf(stderr, "Done.\n");
+
+    return(1);
+}
+
+void sdr_config_nt1066_close(sdr_dev_t *dev)
+{
+    // Disable Ch.D and CLK
+    write_reg(dev->usb, 0, 6, 0x00);
+
+    fprintf(stderr, "Done.\n");
+
+    return;
+}

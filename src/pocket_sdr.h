@@ -36,7 +36,7 @@
 #include <libusb-1.0/libusb.h>
 #endif // WIN32
 
-#define DEMO_L1
+//#define DEMO_L1
 
 #ifdef __cplusplus
 extern "C" {
@@ -272,6 +272,9 @@ int sdr_dev_set_gain(sdr_dev_t *dev, int ch, int gain);
 // sdr_conf.c
 int sdr_conf_read(sdr_dev_t *dev, const char *file, int opt);
 int sdr_conf_write(sdr_dev_t *dev, const char *file, int opt);
+// TEB: Configure NT1066 EVK
+int sdr_config_nt1066(sdr_dev_t *dev);
+void sdr_config_nt1066_close(sdr_dev_t *dev);
 
 // sdr_func.c
 void sdr_func_init(const char *file);
