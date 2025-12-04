@@ -343,5 +343,6 @@ int main(int argc, char **argv)
     if (*debug_file) {
         traceclose();
     }
+    
     return 0;
 }
