@@ -2173,7 +2173,63 @@ static void decode_AFSD_frame(sdr_ch_t *ch, uint8_t *syms, int rev)
         sdr_log(3, "$LOG,%.3f,%s,%d,AFSD SB2 FRAME ERROR,%d,%d", time, ch->sig, ch->prn, nerr, crcok);
     }
 
-    // ignore subframes 3 and 4
+    // decode subframe 3
+    for (i = 0; i < 176; i++) {
+        syms_rcv[i] = ERASURE; // Fill the punctured first 176 bits with erasures.
+    }
+    for (i = 0; i < 694; i++) {
+        syms_rcv[i + 176] = sf234[i + 2400]; // Copy encoded symbols of the systematic portion.
+    }
+    for (i = 0; i < 10; i++) {
+        syms_rcv[i + 870] = ERASURE; // Fill the filler bits with erasures.
+    }
+    for (i = 0; i < 1046; i++) {
+        syms_rcv[i + 880] = sf234[i + 2400 + 694];
+    }
+    for (i = 0; i < 2650; i++) {
+        syms_rcv[i + 1926] = ERASURE;
+    }
+
+    pthread_mutex_lock(&ldpc_afs_mtx);
+    nerr = sdr_decode_LDPC_AFS_SF3(syms_rcv, syms_dec);
+    pthread_mutex_unlock(&ldpc_afs_mtx);
+    crcok = test_CRC(syms_dec, 870);
+
+    if (nerr >= 0 && crcok) {
+        sdr_log(3, "$SB3,%.3f,%s,%d,FRAME DECODED", time, ch->sig, ch->prn);
+    }
+    else {
+        sdr_log(3, "$LOG,%.3f,%s,%d,AFSD SB3 FRAME ERROR,%d,%d", time, ch->sig, ch->prn, nerr, crcok);
+    }
+
+    // decode subframe 4
+    for (i = 0; i < 176; i++) {
+        syms_rcv[i] = ERASURE; // Fill the punctured first 176 bits with erasures.
+    }
+    for (i = 0; i < 694; i++) {
+        syms_rcv[i + 176] = sf234[i + 2400 + 1740]; // Copy encoded symbols of the systematic portion.
+    }
+    for (i = 0; i < 10; i++) {
+        syms_rcv[i + 870] = ERASURE; // Fill the filler bits with erasures.
+    }
+    for (i = 0; i < 1046; i++) {
+        syms_rcv[i + 880] = sf234[i + 2400 + 1740 + 694];
+    }
+    for (i = 0; i < 2650; i++) {
+        syms_rcv[i + 1926] = ERASURE;
+    }
+
+    pthread_mutex_lock(&ldpc_afs_mtx);
+    nerr = sdr_decode_LDPC_AFS_SF3(syms_rcv, syms_dec);
+    pthread_mutex_unlock(&ldpc_afs_mtx);
+    crcok = test_CRC(syms_dec, 870);
+
+    if (nerr >= 0 && crcok) {
+        sdr_log(3, "$SB4,%.3f,%s,%d,FRAME DECODED", time, ch->sig, ch->prn);
+    }
+    else {
+        sdr_log(3, "$LOG,%.3f,%s,%d,AFSD SB4 FRAME ERROR,%d,%d", time, ch->sig, ch->prn, nerr, crcok);
+    }
 }
 
 // decode AFSD nav data --------------------------------------------------------
