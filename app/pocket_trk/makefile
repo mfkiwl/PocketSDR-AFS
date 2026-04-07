@@ -25,7 +25,8 @@ else
     INCLUDE = -I$(SRC) -I$(LIB)/RTKLIB/src
     LIBSDR = $(LIB)/linux/libsdr.a
     LDLIBS = $(LIBSDR) $(LIB)/linux/librtk.a $(LIB)/linux/libfec.a \
-             $(LIB)/linux/libldpc.a -lfftw3f -lpthread -lm -lusb-1.0
+             $(LIB)/linux/libldpc.a -lfftw3f -lpthread -lm -lusb-1.0 \
+             -L/usr/local/lib -lSoapySDR
     OPTIONS =
 endif
 
