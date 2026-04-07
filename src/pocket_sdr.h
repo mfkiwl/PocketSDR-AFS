@@ -64,6 +64,8 @@ extern "C" {
 
 #define SDR_DEV_FILE   1        // SDR device: file
 #define SDR_DEV_USB    2        // SDR device: USB device
+//TEB: ADD SoapySDR device
+#define SDR_DEV_SOAPY  4        // SDR device: SoapySDR
 
 #define SDR_DEV_NAME   "Pocket SDR" // SDR device name 
 #define SDR_DEV_VID    0x04B4   // SDR USB device vendor ID 
@@ -84,7 +86,10 @@ extern "C" {
 #define SDR_FMT_INT8X2 2        // SDR IF data format: int8 x 2 complex (IQ)
 #define SDR_FMT_RAW8   3        // SDR IF data format: packed 8 bits raw  (2CH)
 #define SDR_FMT_RAW16  4        // SDR IF data format: packed 16 bits raw (4CH)
-#define SDR_FMT_RAW16I 5        // SDR IF data format: packed 16 bits raw (8CH)
+#define SDR_FMT_RAW16I 5        // SDR IF data format: packed 16 bits raw (8CH) - SpiderSDR
+// TEB: SDR IF data format for SoapySDR
+#define SDR_FMT_CS8    7        // SDR IF data format: int8 x 2 complex (IQ)
+#define SDR_FMT_CS16   8        // SDR IF data format: int16 x 2 complex (IQ)
 
 #define SDR_STATE_IDLE 1        // SDR channel state: idle
 #define SDR_STATE_SRCH 2        // SDR channel state: search
@@ -123,6 +128,19 @@ typedef struct {                // SDR device type
     pthread_t thread;           // USB event handler thread
     pthread_mutex_t mtx;        // lock flag
 } sdr_dev_t;
+
+// TEB: SDR device structure for SoapySDR
+typedef struct {                // SoapySDR device type
+    void *dev;                  // SoapySDR device handle
+    void *str;                  // SoapySDR device stream
+    char driver[32];            // SoapySDR driver
+    uint8_t *buff;              // sample data buffer
+    int state;                  // state of sampling thread
+    int64_t rp, wp;             // read/write pointer of sampling data buffer
+    int ssize;                  // sample size
+    pthread_t thread;           // reading sampling thread
+    pthread_mutex_t mtx;        // lock flag
+} sdr_sdev_t;
 
 typedef struct {                // signal acquisition type 
     sdr_cpx_t *code_fft;        // code FFT 
@@ -241,6 +259,11 @@ typedef struct sdr_rcv_tag {    // SDR receiver type
     pthread_mutex_t mtx;        // lock flag
     // TEB: Inverted Q sign in MAX2771
     int qsign;                  // inverted Q sign flag
+    // TEB: INT data to IF data LUT for SoapySDR
+    int8_t *LUT16;
+    double data_std;            // IF data std-dev
+    double data_stats[2];       // IF data states {sum,sum_square}
+    int data_cnt;               // IF data count for stats
 } sdr_rcv_t;
 
 // function prototypes -------------------------------------------------------
@@ -268,6 +291,15 @@ int sdr_dev_read(sdr_dev_t *dev, uint8_t *buff, int size);
 int sdr_dev_get_info(sdr_dev_t *dev, int *fmt, double *fs, double *fo, int *IQ);
 int sdr_dev_get_gain(sdr_dev_t *dev, int ch);
 int sdr_dev_set_gain(sdr_dev_t *dev, int ch, int gain);
+
+// TEB: sdr_sdev.c
+int sdr_sdev_list(void);
+sdr_sdev_t *sdr_sdev_open(const char *driver, int fmt, double rate, double freq,
+    double bw, double gain);
+void sdr_sdev_close(sdr_sdev_t *sdev);
+int sdr_sdev_start(sdr_sdev_t *sdev);
+int sdr_sdev_stop(sdr_sdev_t *sdev);
+int sdr_sdev_read(sdr_sdev_t *sdev, uint8_t *buff, int size);
 
 // sdr_conf.c
 int sdr_conf_read(sdr_dev_t *dev, const char *file, int opt);
@@ -406,6 +438,10 @@ int sdr_rcv_rfch_hist(sdr_rcv_t *rcv, int ch, double tave, int *val,
     double *hist1, double *hist2);
 int sdr_rcv_get_gain(sdr_rcv_t *rcv, int ch);
 int sdr_rcv_set_gain(sdr_rcv_t *rcv, int ch, int gain);
+// TEB: Open SoapySDR device
+sdr_rcv_t *sdr_rcv_open_sdev(const char **sigs, int *prns, int n,
+    const char *driver, int fmt, double rate, double freq, const char **paths,
+    const char *opt);
 
 #ifdef __cplusplus
 }

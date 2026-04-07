@@ -25,7 +25,13 @@
 #define NUM_COL    110          // number of channel status columns
 #define MAX_ACQ    4e-3         // max code length w/o acqusition assist (s)
 #define MAX_BUFF_USE 90         // max buffer usage rate (%)
+// TEB: Constants for SoapySDR
+#define AGC_LEVEL  2.3          // target std-dev by auto gain control
+#define DEFAULT_SCALE 64.0      // default scale to INT8/16 to IF data
+#define SCALE_CYC  1000         // scale update cycle (* SDR_CYC)
+#define SAMPLES_STATS 100       // samples for stats
 
+#define SQR(x)     ((x) * (x))
 #define MIN(x, y)  ((x) < (y) ? (x) : (y))
 
 // global variables ------------------------------------------------------------
@@ -165,8 +171,13 @@ char *sdr_rcv_ch_stat(sdr_rcv_t *rcv, const char *sys, int all)
 // get receiver status as sting ------------------------------------------------
 char *sdr_rcv_rcv_stat(sdr_rcv_t *rcv)
 {
-    static const char *src_str[] = {"---", "IF Data", "RF Frontend"};
-    static const char *fmt_str[] = {"---", "INT8", "INT8X2", "RAW8", "RAW16"};
+    // TEB: Add SoapySDR source and format
+    static const char *src_str[] = {
+        "---", "IF Data", "PocketSDR", "Stream", "SoapySDR"
+    };
+    static const char *fmt_str[] = {
+        "---", "INT8", "INT8X2", "RAW8", "RAW16", "RAW16I", "RAW32", "CS8", "CS16"
+    };
     static const char *IQ_str[] = {"---", "I", "IQ"};
     char *p = rcv_rcv_stat_buff;
     
@@ -487,6 +498,12 @@ static int read_data(sdr_rcv_t *rcv, uint8_t *raw, int N)
             return 0; // end of file
         }
     }
+    else if (rcv->dev == SDR_DEV_SOAPY) { // TEB: SoapySDR device
+        while (!sdr_sdev_read((sdr_sdev_t *)rcv->dp, raw, N)) {
+            if (!rcv->state) return 0;
+            sdr_sleep_msec(1);
+        }
+    }
     else { // USB device
         while (!sdr_dev_read((sdr_dev_t *)rcv->dp, raw, N)) {
             if (!rcv->state) return 0;
@@ -524,6 +541,22 @@ static void gen_LUT(sdr_rcv_t *rcv, sdr_cpx8_t LUT[][256])
     }
 }
 
+// generate INT8 or INT16 data to IF data LUT ----------------------------------
+static int8_t *gen_LUT16(int fmt, double scale)
+{
+    int N = fmt == SDR_FMT_CS8 ? 256 : 65536, val;
+    int8_t *LUT16 = (int8_t *)sdr_malloc(sizeof(int8_t) * N);
+    
+    if (scale <= 0.0) scale = DEFAULT_SCALE;
+    
+    for (int i = -N / 2; i < N / 2; i++) {
+        val = (int)floor(i / scale + 0.5);
+        int j = fmt == SDR_FMT_CS8 ? (uint8_t)i : (uint16_t)i;
+        LUT16[j] = (int8_t)(val < -7 ? -7 : (val > 7 ? 7 : val));
+    }
+    return LUT16;
+}
+
 // write IF data buffer ---------------------------------------------------------
 static void write_buff(sdr_rcv_t *rcv, const uint8_t *raw, int64_t ix)
 {
@@ -549,6 +582,21 @@ static void write_buff(sdr_rcv_t *rcv, const uint8_t *raw, int64_t ix)
             else {
                 rcv->buff[0]->data[i] = SDR_CPX8(raw[j], raw[j+1]);
             }
+        }
+    }
+    // TEB: Support SoapySDR devices
+    else if (rcv->fmt == SDR_FMT_CS8) { // int8 x 2 complex
+        for (int j = 0; j < rcv->N * 2; i++, j += 2) {
+            int8_t I = rcv->LUT16[raw[j  ]];
+            int8_t Q = rcv->LUT16[raw[j+1]];
+            rcv->buff[0]->data[i] = SDR_CPX8(I, Q);
+        }
+    }
+    else if (rcv->fmt == SDR_FMT_CS16) { // int16 x 2 complex
+        for (int j = 0; j < rcv->N * 4; i++, j += 4) {
+            int8_t I = rcv->LUT16[*(uint16_t *)(raw + j    )];
+            int8_t Q = rcv->LUT16[*(uint16_t *)(raw + j + 2)];
+            rcv->buff[0]->data[i] = SDR_CPX8(I, Q);
         }
     }
     else if (rcv->fmt == SDR_FMT_RAW8) { // packed 8 bit raw (2CH)
@@ -636,11 +684,68 @@ static void update_srch_ch(sdr_rcv_t *rcv)
     }
 }
 
+// update IF data stats --------------------------------------------------------
+static void update_data_stats(sdr_rcv_t *rcv, const uint8_t *raw)
+{
+    int N = SAMPLES_STATS;
+    
+    for (int i = 0; i < N; i++) {
+        if (rcv->fmt == SDR_FMT_CS8) {
+            rcv->data_stats[0] += (int8_t)raw[i];
+            rcv->data_stats[1] += SQR((int8_t)raw[i]);
+        }
+        else if (rcv->fmt == SDR_FMT_CS16) {
+            rcv->data_stats[0] += *(int16_t *)(raw + i * 2);
+            rcv->data_stats[1] += SQR(*(int16_t *)(raw + i * 2));
+        }
+        else {
+            return;
+        }
+    }
+    rcv->data_cnt += N;
+}
+
+// update scale ----------------------------------------------------------------
+static void update_scale(sdr_rcv_t *rcv)
+{
+    double ave, std, scale = 0.0;
+    
+    if ((rcv->fmt != SDR_FMT_CS8 && rcv->fmt != SDR_FMT_CS16) ||
+        rcv->data_cnt <= 0) {
+        return;
+    }
+    ave = rcv->data_stats[0] / rcv->data_cnt;
+    std = sqrt(rcv->data_stats[1] / rcv->data_cnt - SQR(ave));
+    rcv->data_stats[0] = rcv->data_stats[1] = 0.0;
+    rcv->data_cnt = 0;
+    rcv->data_std = std;
+
+    if (scale <= 0.0) { // auto gain control
+        sdr_free(rcv->LUT16);
+        rcv->LUT16 = gen_LUT16(rcv->fmt, std / AGC_LEVEL);
+    }
+}
+
+// bytes in a sample -----------------------------------------------------------
+static int sample_byte(int fmt)
+{
+    switch (fmt) {
+        case SDR_FMT_INT8X2:
+        case SDR_FMT_RAW16 :
+        case SDR_FMT_RAW16I:
+        case SDR_FMT_CS8   : return 2;
+        case SDR_FMT_CS16  : return 4;
+    }
+    return 1; // SDR_FMT_INT8 || SDR_FMT_RAW8
+}
+
 // SDR receiver thread ---------------------------------------------------------
 static void *rcv_thread(void *arg)
 {
     sdr_rcv_t *rcv = (sdr_rcv_t *)arg;
-    int ns = (rcv->fmt == SDR_FMT_INT8 || rcv->fmt == SDR_FMT_RAW8) ? 1 : 2;
+    // TEB: Support SDR_FMT_SC16
+    //int ns = (rcv->fmt == SDR_FMT_INT8 || rcv->fmt == SDR_FMT_RAW8) ? 1 : 2;
+    int ns = sample_byte(rcv->fmt);
     int size, sum_size = 0;
     uint8_t *raw = (uint8_t *)sdr_malloc(ns * rcv->N);
     uint32_t tick = sdr_get_tick(), tick_r = tick;
@@ -650,6 +755,9 @@ static void *rcv_thread(void *arg)
     
     if (rcv->dev == SDR_DEV_USB) {
         sdr_dev_start((sdr_dev_t *)rcv->dp);
+    }
+    else if (rcv->dev == SDR_DEV_SOAPY) { // TEB: SoapySDR device
+        sdr_sdev_start((sdr_sdev_t *)rcv->dp);
     }
     rcv->data_sum = 0.0;
     
@@ -679,7 +787,13 @@ static void *rcv_thread(void *arg)
         
         // update PVT solution
         sdr_pvt_udsol(rcv->pvt, ix);
-        
+
+        // TEB: Update IF data stats and scale
+        update_data_stats(rcv, raw);
+        if (ix % SCALE_CYC == 0 && ix > 0) {
+            update_scale(rcv);
+        }
+
         // sleep if reading file
         if (rcv->dev == SDR_DEV_FILE) {
             sdr_sleep_msec((int)(ix - (sdr_get_tick() - tick) * rcv->tscale));
@@ -687,6 +801,9 @@ static void *rcv_thread(void *arg)
     }
     if (rcv->dev == SDR_DEV_USB) {
         sdr_dev_stop((sdr_dev_t *)rcv->dp);
+    }
+    else if (rcv->dev == SDR_DEV_SOAPY) { // TEB: SoapySDR device
+        sdr_sdev_stop((sdr_sdev_t *)rcv->dp);
     }
     sdr_log(3, "$LOG,%.3f,%s,%d,STOP", get_buff_ix(rcv) * SDR_CYC, "", 0);
     sdr_free(raw);
@@ -711,9 +828,16 @@ static void *rcv_thread(void *arg)
 //
 int sdr_rcv_start(sdr_rcv_t *rcv, int dev, void *dp, const char **paths)
 {
+    double scale = 0.0; // TEB: Use DEFAULT_SCALE
+
     if (rcv->state) return 0;
     
     sdr_log_open(paths[2]);
+
+    // TEB: initialize IF data LUT
+    if (rcv->fmt == SDR_FMT_CS8  || rcv->fmt == SDR_FMT_CS16) {
+        rcv->LUT16 = gen_LUT16(rcv->fmt, scale);
+    }
     
     for (int i = 0; i < rcv->nch; i++) {
         ch_th_start(rcv->th[i]);
@@ -752,6 +876,13 @@ void sdr_rcv_stop(sdr_rcv_t *rcv)
     for (int i = 0; i < 4; i++) {
         sdr_str_close(rcv->strs[i]);
     }
+
+    // TEB: Clear LUT16
+    if (rcv->fmt == SDR_FMT_CS8  || rcv->fmt == SDR_FMT_CS16) {
+        sdr_free(rcv->LUT16);
+        rcv->LUT16 = NULL;
+    }
+
     sdr_pvt_free(rcv->pvt);
     sdr_log_close();
 }
@@ -808,6 +939,51 @@ sdr_rcv_t *sdr_rcv_open_dev(const char **sigs, int *prns, int n, int bus,
     sdr_rcv_t *rcv = sdr_rcv_new(sigs, prns, n, fmt, fs, fo, IQ);
     sdr_rcv_start(rcv, SDR_DEV_USB, (void *)dev, paths);
     
+    return rcv;
+}
+
+//------------------------------------------------------------------------------
+//  Generate a new SDR receiver by Soapy device and start receiver.
+//
+//  args:
+//      sigs      (I)  signal types as a string array {sig1, sig2, ..., sign}
+//      prns      (I)  PRN numbers as int array {prn1, prn2, ..., prnn}
+//      n         (I)  number of sigs and prns
+//      driver    (I)  SoapySDR driver
+//      fmt       (I)  Sampling data format (CS8 or CS16)
+//      rate      (I)  Sampling rate (sps)
+//      freq      (I)  Carrier center frequency (Hz)
+//      paths     (I)  output stream paths as same as sdr_rcv_start()
+//      opt       (I)  receiver options (string sparated by spaces)
+//                     -RFCH <sig>:<ch>[{,|-}<ch>...]
+//                        assign signal to specific RF CH(s)
+//                     -SCALE=<scale>
+//                        scale of input bits
+//                     -TRACE<=level>
+//                        enable debug trace level <level>
+//
+//  returns:
+//      SDR receiver (NULL: error)
+//
+sdr_rcv_t *sdr_rcv_open_sdev(const char **sigs, int *prns, int n,
+    const char *driver, int fmt, double rate, double freq, const char **paths,
+    const char *opt)
+{
+    sdr_sdev_t *sdev;
+    const char *p;
+    double fs, fo[SDR_MAX_RFCH] = {0}, bw = 0.0, gain = 0.0;
+    int IQ[SDR_MAX_RFCH] = {0};
+    
+    if ((p = strstr(opt, "-GAIN="))) sscanf(p, "-GAIN=%lf", &gain);
+    if ((p = strstr(opt, "-BW="))) sscanf(p, "-BW=%lf", &bw);
+    if (!(sdev = sdr_sdev_open(driver, fmt, rate, freq, bw * 1e6, gain))) {
+        return NULL;
+    }
+    fs = rate;
+    fo[0] = freq;
+    IQ[0] = 2; // I/Q samples
+    sdr_rcv_t *rcv = sdr_rcv_new(sigs, prns, n, fmt, fs, fo, IQ);
+    sdr_rcv_start(rcv, SDR_DEV_SOAPY, (void *)sdev, paths);
     return rcv;
 }
 
@@ -921,6 +1097,9 @@ void sdr_rcv_close(sdr_rcv_t *rcv)
     
     if (rcv->dev == SDR_DEV_USB) {
         sdr_dev_close((sdr_dev_t *)rcv->dp);
+    }
+    else if (rcv->dev == SDR_DEV_SOAPY) { // TEB: SoapySDR device
+        sdr_sdev_close((sdr_sdev_t *)rcv->dp);
     }
     else {
         fclose((FILE *)rcv->dp);

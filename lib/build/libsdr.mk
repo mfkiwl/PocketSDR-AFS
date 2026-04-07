@@ -40,7 +40,7 @@ CFLAGS = -Ofast $(INCLUDE) $(OPTIONS) -Wall -fPIC -g
 
 OBJ = sdr_cmn.o sdr_func.o sdr_code.o sdr_code_gal.o sdr_ch.o \
       sdr_nav.o sdr_pvt.o sdr_pvt_afs.o sdr_rcv.o sdr_fec.o sdr_ldpc.o sdr_ldpc_afs.o sdr_nb_ldpc.o \
-      sdr_usb.o sdr_dev.o sdr_conf.o
+      sdr_usb.o sdr_dev.o sdr_conf.o sdr_sdev.o
 
 TARGET = libsdr.so libsdr.a
 
@@ -100,6 +100,9 @@ sdr_dev.o : $(SRC)/sdr_dev.c
 sdr_conf.o : $(SRC)/sdr_conf.c
 	$(CC) -c $(CFLAGS) $(SRC)/sdr_conf.c
 
+sdr_sdev.o : $(SRC)/sdr_sdev.c
+	$(CC) -c $(CFLAGS) -L/usr/local/lib -lSoapySDR $(SRC)/sdr_sdev.c
+
 sdr_cmn.o  : $(SRC)/pocket_sdr.h
 sdr_func.o : $(SRC)/pocket_sdr.h
 sdr_code.o : $(SRC)/pocket_sdr.h
@@ -114,6 +117,7 @@ sdr_nb_ldpc.o: $(SRC)/pocket_sdr.h
 sdr_usb.o  : $(SRC)/pocket_sdr.h
 sdr_dev.o  : $(SRC)/pocket_sdr.h
 sdr_conf.o : $(SRC)/pocket_sdr.h
+sdr_sdev.o : $(SRC)/pocket_sdr.h
 
 clean:
 	rm -f $(TARGET) *.o
