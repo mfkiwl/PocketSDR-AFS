@@ -26,7 +26,7 @@ int sdr_sdev_list(void)
     devs = SoapySDRDevice_enumerate(NULL, &len);
     
     if (!devs || len == 0) {
-        printf("No devices found.\n");
+        printf("[SOAPY] No devices found.\n");
         SoapySDRKwargsList_clear(devs, len);
         return 0;
     }

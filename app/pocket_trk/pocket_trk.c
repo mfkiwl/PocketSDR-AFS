@@ -212,6 +212,8 @@ int main(int argc, char **argv)
     const char *file = "", *fftw_wisdom = FFTW_WISDOM, *conf_file = "";
     const char *paths[4] = {"", "", "", ""}, *debug_file = "";
     int inv_q = 0; // Inverse Q sign flag
+    // TEB: SoapySDR options
+    const char *opt = "";
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-sig") && i + 1 < argc) {
@@ -238,6 +240,9 @@ int main(int argc, char **argv)
             else if (!strcmp(format, "RAW8"  )) fmt = SDR_FMT_RAW8;
             else if (!strcmp(format, "RAW16" )) fmt = SDR_FMT_RAW16;
             else if (!strcmp(format, "RAW16I")) fmt = SDR_FMT_RAW16I;
+            // TEB: SoapySDR formats
+            else if (!strcmp(format, "CS8"   )) fmt = SDR_FMT_CS8;
+            else if (!strcmp(format, "CS16"  )) fmt = SDR_FMT_CS16;
             else {
                 fprintf(stderr, "unrecognized format: %s\n", format);
                 exit(-1);
@@ -308,6 +313,12 @@ int main(int argc, char **argv)
     if (*file) {
         rcv = sdr_rcv_open_file(sigs, prns, nch, fmt, fs, fo, IQ, toff,
             tscale, file, paths);
+    }
+    // TEB: Open SoapySDR device
+    else if (fmt == SDR_FMT_CS8 || fmt == SDR_FMT_CS16) {
+        // sdr_sdev_list();
+        printf("[SOAPY] Open device (limesuiteng)\n");
+        rcv = sdr_rcv_open_sdev(sigs, prns, nch, "limesuiteng", fmt, fs, 2492.028e6, paths, opt);
     }
     else {
         rcv = sdr_rcv_open_dev(sigs, prns, nch, bus, port, conf_file, paths);
