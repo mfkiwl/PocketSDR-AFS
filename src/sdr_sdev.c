@@ -74,13 +74,44 @@ sdr_sdev_t *sdr_sdev_open(const char *driver, int fmt, double rate,
     }
     SoapySDRKwargs_set(&args, "driver", driver);
     if (!(dev = SoapySDRDevice_make(&args))) {
+        // TEB: Error message
+        printf("[SOAPY] SoapySDRDevice_make fail: %s\n", SoapySDRDevice_lastError());
         SoapySDRKwargs_clear(&args);
         return NULL;
     }
     SoapySDRKwargs_clear(&args);
-    SoapySDRDevice_setSampleRate(dev, SOAPY_SDR_RX, ch, rate);
-    SoapySDRDevice_setFrequency(dev, SOAPY_SDR_RX, ch, freq, NULL);
-    
+
+    // TEB: query device info
+    size_t length;
+    char** names = SoapySDRDevice_listAntennas(dev, SOAPY_SDR_RX, 0, &length);
+    printf("[SOAPY] Rx antennas: ");
+    for (size_t i = 0; i < length; i++) printf("%s, ", names[i]);
+    printf("\n");
+    SoapySDRStrings_clear(&names, length);
+
+    names = SoapySDRDevice_listGains(dev, SOAPY_SDR_RX, 0, &length);
+    printf("[SOAPY] Rx gains: ");
+    for (size_t i = 0; i < length; i++) printf("%s, ", names[i]);
+    printf("\n");
+    SoapySDRStrings_clear(&names, length);
+
+    SoapySDRRange *ranges = SoapySDRDevice_getFrequencyRange(dev, SOAPY_SDR_RX, 0, &length);
+    printf("[SOAPY] Rx freq ranges: ");
+    for (size_t i = 0; i < length; i++) printf("[%g Hz -> %g Hz], ", ranges[i].minimum, ranges[i].maximum);
+    printf("\n");
+    free(ranges);
+
+    // TEB: Appy settings
+    if (SoapySDRDevice_setSampleRate(dev, SOAPY_SDR_RX, ch, rate) != 0) {
+        printf("[SOAPY] setSampleRate fail: %s\n", SoapySDRDevice_lastError());
+    }
+    if (SoapySDRDevice_setFrequency(dev, SOAPY_SDR_RX, ch, freq, NULL) != 0) {
+        printf("[SOAPY] setFrequency fail: %s\n", SoapySDRDevice_lastError());
+    }
+    if (SoapySDRDevice_setAntenna(dev, SOAPY_SDR_RX, 0, "LNAW") != 0) {
+        printf("[SOAPY] setAntenna fail: %s\n", SoapySDRDevice_lastError());
+    }
+
     if (gain > 0.0) {
         (void)SoapySDRDevice_setGainMode(dev, SOAPY_SDR_RX, ch, false);
         (void)SoapySDRDevice_setGain(dev, SOAPY_SDR_RX, ch, gain);
@@ -96,12 +127,14 @@ sdr_sdev_t *sdr_sdev_open(const char *driver, int fmt, double rate,
 
     str_fmt = fmt == SDR_FMT_CS8 ? SOAPY_SDR_CS8 : SOAPY_SDR_CS16;
 
-    if (!(str = SoapySDRDevice_setupStream(dev, SOAPY_SDR_RX, str_fmt, chs, 1,
-        NULL))) {
-        fprintf(stderr, "SoapySDRDevice_setupStream error\n");
+    // Set up a stream
+    if (!(str = SoapySDRDevice_setupStream(dev, SOAPY_SDR_RX, str_fmt, chs, 1, NULL))) {
+        fprintf(stderr, "[SOAPY] SoapySDRDevice_setupStream error\n");
         SoapySDRDevice_unmake(dev);
         return NULL;
     }
+
+    // Create a buffer for RX samples
     sdr_sdev_t *sdev = (sdr_sdev_t *)sdr_malloc(sizeof(sdr_sdev_t));
     sdev->dev = (void *)dev;
     sdev->str = (void *)str;
