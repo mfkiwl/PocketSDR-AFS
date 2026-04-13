@@ -213,7 +213,7 @@ int main(int argc, char **argv)
     const char *paths[4] = {"", "", "", ""}, *debug_file = "";
     int inv_q = 0; // Inverse Q sign flag
     // TEB: SoapySDR options
-    const char *opt = "";
+    const char *opt = "-GAIN=30 -BW=12 -ANT=LNAH";
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-sig") && i + 1 < argc) {
@@ -317,7 +317,6 @@ int main(int argc, char **argv)
     // TEB: Open SoapySDR device
     else if (fmt == SDR_FMT_CS8 || fmt == SDR_FMT_CS16) {
         // sdr_sdev_list();
-        printf("[SOAPY] Open device (limesuiteng)\n");
         rcv = sdr_rcv_open_sdev(sigs, prns, nch, "limesuiteng", fmt, fs, 2492.028e6, paths, opt);
     }
     else {

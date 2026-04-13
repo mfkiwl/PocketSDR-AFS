@@ -295,7 +295,7 @@ int sdr_dev_set_gain(sdr_dev_t *dev, int ch, int gain);
 // TEB: sdr_sdev.c
 int sdr_sdev_list(void);
 sdr_sdev_t *sdr_sdev_open(const char *driver, int fmt, double rate, double freq,
-    double bw, double gain);
+    double bw, double gain, const char *ant);
 void sdr_sdev_close(sdr_sdev_t *sdev);
 int sdr_sdev_start(sdr_sdev_t *sdev);
 int sdr_sdev_stop(sdr_sdev_t *sdev);

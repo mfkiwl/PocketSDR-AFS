@@ -973,10 +973,13 @@ sdr_rcv_t *sdr_rcv_open_sdev(const char **sigs, int *prns, int n,
     const char *p;
     double fs, fo[SDR_MAX_RFCH] = {0}, bw = 0.0, gain = 0.0;
     int IQ[SDR_MAX_RFCH] = {0};
+    // TEB: Antenna selection
+    char ant[8]; ant[0] = 0;
     
     if ((p = strstr(opt, "-GAIN="))) sscanf(p, "-GAIN=%lf", &gain);
     if ((p = strstr(opt, "-BW="))) sscanf(p, "-BW=%lf", &bw);
-    if (!(sdev = sdr_sdev_open(driver, fmt, rate, freq, bw * 1e6, gain))) {
+    if ((p = strstr(opt, "-ANT="))) sscanf(p, "-ANT=%s", ant);
+    if (!(sdev = sdr_sdev_open(driver, fmt, rate, freq, bw * 1e6, gain, ant))) {
         return NULL;
     }
     fs = rate;
