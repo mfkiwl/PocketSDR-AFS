@@ -213,7 +213,7 @@ int main(int argc, char **argv)
     const char *paths[4] = {"", "", "", ""}, *debug_file = "";
     int inv_q = 0; // Inverse Q sign flag
     // TEB: SoapySDR options
-    const char *opt = "-GAIN=30 -BW=12 -ANT=LNAH";
+    const char *opt = "-GAIN=30 -BW=8 -ANT=LNAH";
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-sig") && i + 1 < argc) {
@@ -318,6 +318,7 @@ int main(int argc, char **argv)
     else if (fmt == SDR_FMT_CS8 || fmt == SDR_FMT_CS16) {
         // sdr_sdev_list();
         rcv = sdr_rcv_open_sdev(sigs, prns, nch, "limesuiteng", fmt, fs, 2492.028e6, paths, opt);
+        //rcv = sdr_rcv_open_sdev(sigs, prns, nch, "limesuiteng", fmt, fs, 1575.42e6, paths, opt);
     }
     else {
         rcv = sdr_rcv_open_dev(sigs, prns, nch, bus, port, conf_file, paths);
