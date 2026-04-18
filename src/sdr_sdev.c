@@ -203,13 +203,17 @@ static void *reader_thread(void *arg)
         buffs[0] = (void *)(sdev->buff + BUFF_SIZE * i);
         ret = SoapySDRDevice_readStream(dev, str, buffs, BUFF_SIZE / sdev->ssize,
             &flags, &tns, READ_TO);
-        if (ret == SOAPY_SDR_TIMEOUT) continue;
+        if (ret == SOAPY_SDR_TIMEOUT) { // ret == -1;
+            i--; // TEB: Do not update the buffer counter
+            continue;
+        }
         if (ret < 0) {
             fprintf(stderr, "device read error (%s)\n", SoapySDR_errToStr(ret));
             break;
         }
         pthread_mutex_lock(&sdev->mtx);
-        sdev->wp += BUFF_SIZE;
+        //sdev->wp += BUFF_SIZE;
+        sdev->wp += ret * sdev->ssize;
         pthread_mutex_unlock(&sdev->mtx);
     }
     return NULL;
