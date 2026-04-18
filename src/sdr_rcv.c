@@ -975,11 +975,14 @@ sdr_rcv_t *sdr_rcv_open_sdev(const char **sigs, int *prns, int n,
     int IQ[SDR_MAX_RFCH] = {0};
     // TEB: Antenna selection
     char ant[8]; ant[0] = 0;
+    // TEB: Device serial
+    char serial[24]; serial[0] = 0;
     
     if ((p = strstr(opt, "-GAIN="))) sscanf(p, "-GAIN=%lf", &gain);
     if ((p = strstr(opt, "-BW="))) sscanf(p, "-BW=%lf", &bw);
-    if ((p = strstr(opt, "-ANT="))) sscanf(p, "-ANT=%s", ant);
-    if (!(sdev = sdr_sdev_open(driver, fmt, rate, freq, bw * 1e6, gain, ant))) {
+    if ((p = strstr(opt, "-ANT="))) sscanf(p, "-ANT=%s", ant); // TEB: Add antenna selection
+    if ((p = strstr(opt, "-SERIAL="))) sscanf(p, "-SERIAL=%s", serial); // TEB: Add device serial
+    if (!(sdev = sdr_sdev_open(driver, fmt, rate, freq, bw * 1e6, gain, ant, serial))) {
         return NULL;
     }
     fs = rate;

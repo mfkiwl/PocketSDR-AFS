@@ -60,7 +60,7 @@ int sdr_sdev_list(void)
 //      SoapySDR device pointer (NULL: error)
 //
 sdr_sdev_t *sdr_sdev_open(const char *driver, int fmt, double rate,
-    double freq, double bw, double gain, const char *ant)
+    double freq, double bw, double gain, const char *ant, const char *serial)
 {
     SoapySDRDevice *dev;
     SoapySDRStream *str;
@@ -74,9 +74,17 @@ sdr_sdev_t *sdr_sdev_open(const char *driver, int fmt, double rate,
     }
 
     // TEB: Open device message
-    printf("[SOAPY] Open device (%s)\n", driver);
+    printf("[SOAPY] Open device (%s", driver);
+    if (serial[0] != 0) {
+        printf(",%s", serial);
+    }
+    printf(")\n");
 
     SoapySDRKwargs_set(&args, "driver", driver);
+    // TEB: Set device serial
+    if (serial[0] != 0) {
+        SoapySDRKwargs_set(&args, "serial", serial);
+    }
     if (!(dev = SoapySDRDevice_make(&args))) {
         // TEB: Error message
         printf("[SOAPY] SoapySDRDevice_make fail: %s\n", SoapySDRDevice_lastError());
