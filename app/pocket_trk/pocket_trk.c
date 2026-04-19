@@ -214,6 +214,9 @@ int main(int argc, char **argv)
     int inv_q = 0; // Inverse Q sign flag
     // TEB: SoapySDR options
     const char *opt = ""; //"-GAIN=30 -BW=8 -ANT=LNAH";
+    // TEB: max Doppler for acquisition [Hz]
+    double dopp = 5000.0;
+
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-sig") && i + 1 < argc) {
@@ -293,6 +296,9 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "-Soapy") && i + 1 < argc) {
             opt = argv[++i]; // TEB: 2026-04-18 SoapySDR options
         }
+        else if (!strcmp(argv[i], "-dopp") && i + 1 < argc) {
+            dopp = atof(argv[++i]); // TEB: 2026-04-19 max dop options
+        }
         else if (argv[i][0] == '-') {
             show_usage();
         }
@@ -305,7 +311,10 @@ int main(int argc, char **argv)
         tracelevel(TRACE_LEVEL);
     }
     sdr_func_init(fftw_wisdom);
-    
+
+    // TEB: 2026-04-19 Set max Doppler for acquisition
+    sdr_rcv_setopt("max_dop", dopp); // Set max Doppler for acquisition (Hz)
+
     signal(SIGTERM, sig_func);
     signal(SIGINT, sig_func);
 #ifndef WIN32
