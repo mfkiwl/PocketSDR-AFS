@@ -3,3 +3,6 @@
 *.a
 lib/LDPC-codes/
 lib/libfec/
+ffwt_wisdom
+log.txt
+pocket_trk
